@@ -292,3 +292,71 @@ td:last-child { border-radius: 0 8px 8px 0; }
     50% { opacity: 1; transform: scale(1.02); color: #22d3ee; text-shadow: 0 0 10px #22d3ee; }
     100% { opacity: 0.4; transform: scale(0.98); }
 }
+
+/* --- MOBILE RESPONSIVENESS (Add to bottom of App.css) --- */
+
+@media (max-width: 768px) {
+  
+  /* 1. Adjust Layout Container */
+  .container {
+    width: 90%; /* Use percentage instead of fixed max-width */
+    padding-top: 100px; /* Less top space */
+    padding-bottom: 30px;
+  }
+
+  /* 2. Shrink the Giant Text */
+  h1 {
+    font-size: 2.2rem; /* Was 3.5rem */
+    line-height: 1.2;
+  }
+
+  /* 3. Stack the Grid (Side-by-side becomes Top-to-bottom) */
+  .grid-2 {
+    grid-template-columns: 1fr; /* Single column */
+    gap: 15px;
+  }
+
+  /* 4. Slim down the Glass Card */
+  .glass-card {
+    padding: 25px; /* Was 50px */
+    border-radius: 16px;
+  }
+
+  /* 5. Adjust Logo Position */
+  .logo {
+    font-size: 1.5rem; /* Smaller logo text */
+    top: 25px;
+    left: 20px;
+  }
+
+  /* 6. Fix Inputs & Sliders */
+  input[type="text"], select, input[type="number"] {
+    padding: 12px; /* Smaller touch targets */
+    font-size: 0.9rem;
+  }
+
+  /* 7. Fix Table Scrolling */
+  table {
+    display: block;
+    overflow-x: auto; /* Adds scrollbar if table is too wide */
+    white-space: nowrap;
+  }
+  
+  /* 8. Resize Background Orbs so they don't overwhelm small screens */
+  .orb-1, .orb-2 {
+    width: 400px;
+    height: 400px;
+    filter: blur(60px);
+  }
+  
+  /* 9. Adjust Chart Height */
+  .chart-container {
+    height: 250px !important; /* Smaller chart height */
+  }
+
+  /* 10. Fix Buttons */
+  .cta-button {
+    font-size: 1rem;
+    padding: 15px;
+  }
+}
