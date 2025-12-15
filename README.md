@@ -1,5 +1,3 @@
-
-````markdown
 <div align="center">
   <img src="./screenshots/banner.png" alt="Project Banner" width="100%" />
 </div>
@@ -93,38 +91,34 @@ Follow these steps to run the simulator on your local machine.
 * npm
 
 ### 1. Clone the Repository
-```bash
-git clone [https://github.com/your-username/decision-simulator.git](https://github.com/your-username/decision-simulator.git)
+
+git clone [https://github.com/ChosenOne6969/decision-simulator.git](https://github.com/ChosenOne6969/decision-simulator.git)
 cd decision-simulator
-````
 
 ### 2\. Setup the Backend (Server)
 
 The backend handles the simulation logic.
 
-```bash
 cd server
 npm install
 npm start
 # Server runs on http://localhost:5000
-```
 
 ### 3\. Setup the Frontend (Client)
 
 Open a new terminal tab.
 
-```bash
+
 cd client
 npm install
 npm start
 # Client runs on http://localhost:3000
-```
+
 
 -----
 
 ## 📂 Project Structure
 
-```bash
 decision-simulator/
 ├── client/                 # React Frontend
 │   ├── src/
@@ -142,7 +136,7 @@ decision-simulator/
     ├── banner.png          # Wide header shot
     ├── landing.png         # Input screen
     └── result.png          # Chart screen
-```
+
 
 -----
 
@@ -165,6 +159,3 @@ This project rejects the sterile "Corporate Dashboard" look in favor of a **Cine
 -----
 
 *This project is for educational and portfolio purposes.*
-
-```
-```
