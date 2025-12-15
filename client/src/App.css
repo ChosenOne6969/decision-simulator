@@ -110,26 +110,34 @@ html, body {
 }
 
 /* --- 2. LOGO LAYER --- */
+/* --- 2. LOGO LAYER (Natural Scroll) --- */
 .logo {
-  position: fixed;
+  /* ABSOLUTE: Places it at top of the content, but it moves when you scroll */
+  position: absolute; 
   top: 40px;
   left: 40px;
-  z-index: 9999;
+  z-index: 9999; /* On top of background, same level as content */
+  
+  /* TYPOGRAPHY */
   font-family: 'Montserrat', sans-serif;
   font-weight: 900;
   font-size: 2rem;
   letter-spacing: -1px;
   text-decoration: none;
   
+  /* ORIGINAL GRADIENT COLOR */
   background: linear-gradient(135deg, #e0f2fe 0%, #3b82f6 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   
+  /* GLOW */
   filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.5));
 }
-.logo:hover { opacity: 0.9; }
 
+.logo:hover {
+  opacity: 0.9;
+}
 /* --- 3. CONTENT LAYER --- */
 .content-scroll-wrapper {
   position: absolute; 

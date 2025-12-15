@@ -8,16 +8,18 @@ import './App.css';
 function App() {
   return (
     <>
-        {/* Fixed Background */}
+        {/* 1. Background Layer (Fixed) */}
         <Background />
 
-        {/* Fixed Logo */}
-        <a href="/" className="logo">
-            Andrea Piu
-        </a>
-
-        {/* Scrollable Page Content */}
+        {/* 2. Scrollable Content Wrapper */}
+        {/* The wrapper handles the scrolling. Anything inside here moves. */}
         <div className="content-scroll-wrapper">
+            
+            {/* LOGO INSIDE WRAPPER = SCROLLS AWAY */}
+            <a href="/" className="logo">
+                Andrea Piu
+            </a>
+
             <Router>
                 <Routes>
                     <Route path="/" element={<LandingPage />} />
