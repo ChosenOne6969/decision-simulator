@@ -1,36 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Line } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler } from 'chart.js';
+import { Line, Pie } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, annotationPlugin);
+// Register ChartJS components including ArcElement for the Pie Chart
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler, annotationPlugin);
 
-// --- THE LOCAL SIMULATION ENGINE ---
+// --- SIMULATION ENGINE ---
 const runLocalSimulation = (payload) => {
-    const { uncertaintyLevel, inputs, customRules, scenarioType } = payload;
+    const { variance, baseValue, breakdown, customRules, scenarioType } = payload;
     
-    // 1. Define Rules based on Scenario
-    let threshold, trueLabel, falseLabel, inputValue;
-
+    // 1. Setup Context & Thresholds
+    let threshold, trueLabel, falseLabel, unit;
     if (scenarioType === "medical") {
-        threshold = 140; // Systolic BP
-        trueLabel = "High Risk";
-        falseLabel = "Healthy";
-        inputValue = inputs.systolicBP;
+        threshold = 140; trueLabel = "High Risk"; falseLabel = "Healthy"; unit = "mmHg";
     } else if (scenarioType === "loan") {
-        threshold = 700; // Credit Score
-        trueLabel = "Approved";
-        falseLabel = "Rejected";
-        inputValue = inputs.creditScore;
+        threshold = 700; trueLabel = "Approved"; falseLabel = "Rejected"; unit = "Score";
     } else {
-        threshold = customRules.threshold;
-        trueLabel = customRules.trueLabel;
-        falseLabel = customRules.falseLabel;
-        inputValue = inputs.customValue;
+        threshold = customRules.threshold; trueLabel = customRules.trueLabel; falseLabel = customRules.falseLabel; unit = "pts";
     }
 
-    // 2. Helper: Box-Muller Transform for Gaussian Noise
+    // 2. Box-Muller Transform (Gaussian Noise Generator)
     const generateNormal = (mean, stdDev) => {
         let u = 0, v = 0;
         while (u === 0) u = Math.random();
@@ -38,89 +29,72 @@ const runLocalSimulation = (payload) => {
         return mean + stdDev * Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
     };
 
-    // 3. Monte Carlo Simulation
     const iterations = 5000;
     const results = [];
-    const logs = [];
     let flipCount = 0;
-
-    // Determine Baseline (The "Perfect World" Outcome)
-    const isAboveThreshold = inputValue > threshold;
-    const baselineDecision = scenarioType === "loan" 
-        ? (isAboveThreshold ? trueLabel : falseLabel) 
-        : (isAboveThreshold ? trueLabel : falseLabel); 
     
+    // Determine the Ideal (Deterministic) Decision
+    const baselineDecision = scenarioType === "loan" 
+        ? (baseValue >= threshold ? trueLabel : falseLabel) 
+        : (baseValue >= threshold ? trueLabel : falseLabel); 
+
     for (let i = 0; i < iterations; i++) {
+        // Calculate Standard Deviation based on the user's Variance %
+        // e.g., If Base is 700 and Variance is 5%, StdDev = 35.
+        const stdDev = baseValue * (parseFloat(variance) / 100);
+        
         // Inject Noise
-        const noise = generateNormal(0, parseFloat(uncertaintyLevel) * 20); // Scaled for visibility
-        const simulatedValue = inputValue + noise;
+        const noise = generateNormal(0, stdDev);
+        const simulatedValue = Math.round(baseValue + noise);
         
-        // Determine Outcome
-        let outcome = simulatedValue >= threshold ? trueLabel : falseLabel;
-        
-        // Handle Logic Inversion for Loan (Higher is better)
-        if (scenarioType === "loan" && simulatedValue < threshold) outcome = falseLabel;
-        if (scenarioType === "loan" && simulatedValue >= threshold) outcome = trueLabel;
+        // Determine Outcome for this specific iteration
+        let outcome;
+        if (scenarioType === "loan") outcome = simulatedValue >= threshold ? trueLabel : falseLabel;
+        else outcome = simulatedValue >= threshold ? trueLabel : falseLabel;
 
-        results.push(Math.round(simulatedValue));
+        results.push(simulatedValue);
 
-        // Check Stability
-        const isFlip = outcome !== baselineDecision;
-        if (isFlip) flipCount++;
-
-        // Log interesting events
-        if (logs.length < 5 && (isFlip || Math.random() < 0.001)) {
-            logs.push({
-                id: i,
-                value: simulatedValue.toFixed(2),
-                outcome: outcome,
-                isFlip: isFlip
-            });
-        }
+        // Did this iteration flip the decision?
+        if (outcome !== baselineDecision) flipCount++;
     }
 
-    // 4. Calculate Distribution
+    // Sort Results for the Distribution Graph (Low -> High)
     const distribution = {};
     results.sort((a, b) => a - b);
     results.forEach(val => {
         distribution[val] = (distribution[val] || 0) + 1;
     });
 
-    // 5. Calculate Stability & Impact
-    const stabilityScore = ((1 - (flipCount / iterations)) * 100).toFixed(2);
-    const dropPercentage = (100 - parseFloat(stabilityScore)).toFixed(2);
+    // Calculate Final Stats
+    const stabilityScore = ((1 - (flipCount / iterations)) * 100).toFixed(1);
+    const failRate = (100 - parseFloat(stabilityScore)).toFixed(1);
     
-    // Impact Statement Generation
+    // Generate Text Report
     let impactStatement = "";
-    if (parseFloat(dropPercentage) === 0) {
-        impactStatement = "System is stable. Noise had zero impact on the outcome.";
-    } else if (parseFloat(dropPercentage) < 20) {
-        impactStatement = `At uncertainty level ${uncertaintyLevel}, the probability of '${baselineDecision}' dropped by ${dropPercentage}%.`;
-    } else {
-        impactStatement = `Critical Instability: Noise reduced confidence in '${baselineDecision}' by ${dropPercentage}%.`;
-    }
-
-    // 6. Reflection Text
-    let reflection = "";
-    if (stabilityScore > 95) reflection = "The system is robust. Chaos has little effect here.";
-    else if (stabilityScore > 70) reflection = "Uncertainty is creeping in. The edge cases are dangerous.";
-    else reflection = "Entropy dominates. The decision is no longer deterministic.";
+    if (parseFloat(failRate) === 0) impactStatement = "System is strictly deterministic. No deviation detected.";
+    else impactStatement = `At ${variance}% variance, the model shows a ${failRate}% deviation from the ideal outcome.`;
 
     return {
-        stability: stabilityScore + "%",
+        stability: stabilityScore,
+        failRate: failRate,
         baselineDecision,
+        baseValue,
+        breakdown, 
         threshold,
+        unit,
+        scenarioType,
         probabilities: {
-            [baselineDecision]: ((1 - (flipCount / iterations)) * 100).toFixed(1) + "%",
-            [baselineDecision === trueLabel ? falseLabel : trueLabel]: ((flipCount / iterations) * 100).toFixed(1) + "%"
+            [baselineDecision]: stabilityScore,
+            [baselineDecision === trueLabel ? falseLabel : trueLabel]: failRate
         },
         distribution,
-        logs,
-        reflection,
-        impactStatement
+        impactStatement,
+        trueLabel,
+        falseLabel
     };
 };
 
+// --- COMPONENT VIEW ---
 const ResultPage = () => {
   const { state } = useLocation();
   const navigate = useNavigate();
@@ -128,58 +102,56 @@ const ResultPage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Redirect if no state is found (direct access protection)
     if (!state) { navigate('/'); return; }
     
-    const runSim = async () => {
-        // 1. ANTICIPATION DELAY (3 Seconds)
+    const processSimulation = async () => {
+        setLoading(true); // Ensure loading screen shows on re-run
+
+        // 1. ANTICIPATION DELAY (3 Seconds) for UX
         await new Promise(resolve => setTimeout(resolve, 3000));
 
-        // 2. RUN LOCAL SIMULATION
+        // 2. RUN SIMULATION
         const payload = {
-            uncertaintyLevel: state.uncertainty,
+            variance: state.variance,
             scenarioType: state.scenario,
-            inputs: state.scenario === "custom" ? { customValue: state.inputs.customValue } : state.inputs,
-            customRules: state.scenario === "custom" ? state.customRules : null
+            baseValue: state.baseValue, 
+            breakdown: state.breakdown,
+            customRules: state.customRules
         };
         
-        const simulationResult = runLocalSimulation(payload);
-        setResult(simulationResult);
+        const data = runLocalSimulation(payload);
+        setResult(data);
         setLoading(false);
     };
-    runSim();
+
+    processSimulation();
+    
+    // Dependency on state.simId ensures re-calculation on every button click
   }, [state, navigate]); 
 
-  // --- DOWNLOAD HELPER ---
   const downloadReport = () => {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(result, null, 2));
-      const downloadAnchorNode = document.createElement('a');
-      downloadAnchorNode.setAttribute("href", dataStr);
-      downloadAnchorNode.setAttribute("download", `decision_log_${Date.now()}.json`);
-      document.body.appendChild(downloadAnchorNode); // required for firefox
-      downloadAnchorNode.click();
-      downloadAnchorNode.remove();
+      const el = document.createElement('a');
+      el.setAttribute("href", dataStr);
+      el.setAttribute("download", `simulation_log_${Date.now()}.json`);
+      document.body.appendChild(el); el.click(); el.remove();
   };
 
-  // --- RENDERING HELPERS ---
-  const getLabel = (key) => key;
-
+  // --- CHART 1: DISTRIBUTION (LINE) CONFIG ---
   const prepareChartData = () => {
     if (!result || !result.distribution) return { labels: [], datasets: [] };
     const keys = Object.keys(result.distribution).map(Number).sort((a, b) => a - b);
-    const labels = []; const dataPoints = [];
-    for (let i = keys[0]; i <= keys[keys.length-1]; i++) {
-        labels.push(i);
-        dataPoints.push(result.distribution[i] || 0);
-    }
+    
     return {
-      labels,
+      labels: keys,
       datasets: [{
-          label: 'Probability Density',
-          data: dataPoints,
+          label: 'Frequency',
+          data: keys.map(k => result.distribution[k]),
           borderColor: '#3b82f6',
           backgroundColor: (context) => {
             const ctx = context.chart.ctx;
-            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
             gradient.addColorStop(0, 'rgba(59, 130, 246, 0.5)');
             gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
             return gradient;
@@ -191,144 +163,142 @@ const ResultPage = () => {
     };
   };
 
-  const chartOptions = {
+  const lineOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
+      title: { display: true, text: 'Gaussian Probability Distribution', color: '#94a3b8' },
       annotation: {
         annotations: {
-            line1: {
-                type: 'line',
-                scaleID: 'x',
-                value: result ? result.threshold : 0,
-                borderColor: '#f87171',
-                borderWidth: 2,
-                borderDash: [6, 6],
-                label: { content: 'Threshold', display: true, backgroundColor: '#f87171', color: 'white' }
+            line1: { 
+                type: 'line', 
+                scaleID: 'x', 
+                value: result ? result.threshold : 0, 
+                borderColor: '#f87171', 
+                borderWidth: 2, 
+                label: { content: 'Threshold', display: true, backgroundColor: '#f87171', color: 'white' } 
             }
         }
       }
     },
     scales: {
-        x: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#94a3b8' } },
-        y: { display: false }
+        x: { 
+            ticks: { color: '#94a3b8' }, 
+            title: { display: true, text: result ? `Simulated Output (${result.unit})` : 'Value', color: '#cbd5e1' } 
+        },
+        y: { 
+            display: true, 
+            title: { display: true, text: 'Probability Density', color: '#cbd5e1' }, 
+            grid: { color: 'rgba(255,255,255,0.05)' } 
+        }
     }
   };
 
-  // --- LOADING SCREEN ---
+  // --- CHART 2: PIE CHART CONFIG ---
+  const preparePieData = () => {
+      if(!result) return { labels: [], datasets: [] };
+      
+      const idealLabel = result.baselineDecision;
+      const riskLabel = result.baselineDecision === result.trueLabel ? result.falseLabel : result.trueLabel;
+
+      return {
+          labels: [idealLabel, riskLabel],
+          datasets: [{
+              data: [parseFloat(result.stability), parseFloat(result.failRate)],
+              backgroundColor: ['#4ade80', '#f87171'], // Green vs Red
+              borderColor: '#1e293b', // Dark border to match background
+              borderWidth: 2
+          }]
+      };
+  };
+
+  const pieOptions = {
+      plugins: {
+          legend: { position: 'bottom', labels: { color: '#cbd5e1', padding: 20 } }
+      }
+  };
+
+  // --- RENDER: LOADING STATE ---
   if (loading || !result) return (
-    <div className="container" style={{textAlign:"center", height: "80vh", justifyContent: "center"}}>
+    <div className="container" style={{textAlign:"center", height: "80vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center"}}>
         <h2 style={{ fontFamily: 'Montserrat', fontSize: "2rem", animation: "pulse 1.5s infinite" }}>
             Analyzing Quantum Outcomes...
         </h2>
-        <p style={{marginTop: "10px", opacity: 0.7}}>Injecting noise into the system</p>
+        <p style={{marginTop: "15px", opacity: 0.7, color: "#22d3ee"}}>
+             Injecting {state?.variance}% Stochastic Noise
+        </p>
     </div>
   );
 
-  // --- RESULT SCREEN ---
+  // --- RENDER: RESULTS ---
   return (
     <div className="container">
-      
-      {/* BUTTON HEADER */}
-      <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px'}}>
-          <button className="secondary-button" onClick={() => navigate('/')}>
-              &larr; Start New Simulation
-          </button>
-          
-          <button className="secondary-button" onClick={downloadReport} style={{borderColor: '#22d3ee', color: '#22d3ee'}}>
-              💾 Download Mission Log
-          </button>
+      <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '20px'}}>
+          <button className="secondary-button" onClick={() => navigate('/')}>&larr; New Model</button>
+          <button className="secondary-button" onClick={downloadReport} style={{borderColor: '#22d3ee', color: '#22d3ee'}}>💾 Export JSON</button>
       </div>
 
       <div className="glass-card">
+        {/* HEADER */}
         <div className="grid-2">
             <div>
-                <h1>Results</h1>
-                <p style={{fontStyle: 'italic', color: '#a5f3fc'}}>"{result.reflection}"</p>
+                <h1>Evaluation Report</h1>
+                <p style={{fontSize: '0.9rem', color: '#94a3b8', marginTop: '-10px'}}>
+                    Logic: {result.breakdown}
+                </p>
             </div>
             <div style={{ textAlign: "right" }}>
-                <div className="stat-label">Stability Score</div>
-                <div className="stat-value" style={{ 
-                    color: parseFloat(result.stability) < 60 ? "#f87171" : "#4ade80",
-                    textShadow: "0 0 20px rgba(255,255,255,0.2)"
-                }}>
-                    {result.stability}
+                <div className="stat-label">Confidence Score</div>
+                <div className="stat-value" style={{ color: parseFloat(result.stability) < 60 ? "#f87171" : "#4ade80" }}>
+                    {result.stability}%
                 </div>
             </div>
         </div>
 
-        {/* ENTROPY IMPACT REPORT */}
+        {/* IMPACT STATEMENT BOX */}
         <div style={{ 
-            background: 'rgba(34, 211, 238, 0.1)', 
-            border: '1px solid #22d3ee', 
-            borderRadius: '12px', 
-            padding: '15px',
-            marginTop: '20px',
-            marginBottom: '20px',
-            textAlign: 'center',
-            color: '#cffafe'
+            background: 'rgba(34, 211, 238, 0.1)', border: '1px solid #22d3ee', borderRadius: '12px', 
+            padding: '15px', marginTop: '20px', textAlign: 'center', color: '#cffafe'
         }}>
-            <strong style={{textTransform:'uppercase', letterSpacing:'1px', fontSize:'0.8rem'}}>Entropy Impact Report</strong>
-            <div style={{ fontSize: '1.1rem', marginTop: '5px' }}>
-                {result.impactStatement}
-            </div>
+            <strong style={{textTransform:'uppercase', letterSpacing:'1px', fontSize:'0.8rem'}}>Entropy Analysis</strong>
+            <div style={{ fontSize: '1.1rem', marginTop: '5px' }}>{result.impactStatement}</div>
         </div>
 
+        {/* MAIN LINE CHART */}
         <div style={{ height: "300px", marginTop: "20px", marginBottom: "30px" }}>
-            <Line data={prepareChartData()} options={chartOptions} />
+            <Line data={prepareChartData()} options={lineOptions} />
         </div>
 
+        {/* EXPLAINER TEXT */}
         <div className="explainer-box">
             <h3>📖 Understanding the Data</h3>
-            <div style={{marginBottom: "15px"}}>
-                <strong>1. The Blue Hill:</strong> Represents the range of possible outcomes. A wider hill means higher uncertainty.
+            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
+                <div>
+                    <strong>X-Axis (Simulated Output):</strong> The range of possible scores generated by the simulation.
+                </div>
+                <div>
+                    <strong>Y-Axis (Probability):</strong> The height of the curve shows the likelihood of that specific score.
+                </div>
             </div>
+        </div>
+
+        {/* PIE CHART SECTION */}
+        <div className="grid-2" style={{marginTop: '40px', alignItems: 'center'}}>
             <div>
-                <strong>2. The Verdict:</strong> Even if the perfect result is <strong>{getLabel(result.baselineDecision)}</strong>, 
-                noise creates a real probability of failure.
+                <h3>Probabilistic Outcome</h3>
+                <p style={{color: '#94a3b8', marginBottom: '15px', lineHeight: '1.6'}}>
+                    While the "Ideal" math suggests a 100% chance of <strong>{result.baselineDecision}</strong>, the real-world variance introduces a <strong>{result.failRate}%</strong> risk of the opposite outcome.
+                </p>
+                <div className="stat-card">
+                    <div className="stat-label">Ideal Deterministic Outcome</div>
+                    <div className="stat-value">{result.baselineDecision}</div>
+                </div>
+            </div>
+            <div style={{height: '280px', display: 'flex', justifyContent: 'center'}}>
+                <Pie data={preparePieData()} options={pieOptions} />
             </div>
         </div>
-
-        <div className="grid-2" style={{ marginTop: "30px" }}>
-            <div className="stat-card">
-                <div className="stat-label">Perfect World Result</div>
-                <div className="stat-value">{getLabel(result.baselineDecision)}</div>
-            </div>
-            <div className="stat-card">
-                 <div className="stat-label">Real World Probabilities</div>
-                 {Object.entries(result.probabilities).map(([k, v]) => (
-                     <div key={k} style={{ display:"flex", justifyContent:"space-between", marginTop:"5px", color:"#cbd5e1"}}>
-                         <span>{getLabel(k)}</span>
-                         <span style={{fontWeight:"bold", color: "#60a5fa"}}>{v}</span>
-                     </div>
-                 ))}
-            </div>
-        </div>
-
-        <h3 style={{ marginTop: "40px", borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "20px" }}>
-            Event Horizon Logs
-        </h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Sim ID</th>
-                    <th>Input Value</th>
-                    <th>Outcome</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {result.logs.map(log => (
-                    <tr key={log.id} className={log.isFlip ? "flipped" : "stable"}>
-                        <td>#{log.id}</td>
-                        <td>{log.value}</td>
-                        <td>{getLabel(log.outcome)}</td>
-                        <td>{log.isFlip ? "⚠️ FLIPPED" : "Stable"}</td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
 
       </div>
     </div>

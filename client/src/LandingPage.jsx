@@ -4,95 +4,126 @@ import { motion } from 'framer-motion';
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const [scenario, setScenario] = useState('loan'); 
+  const [variance, setVariance] = useState(5); // Now represents PERCENTAGE (5%)
   
-  // Form State
-  const [scenario, setScenario] = useState("medical");
-  const [customRules, setCustomRules] = useState({ 
-      title: "Speeding Ticket", variableName: "Speed (mph)", 
-      operator: ">", threshold: 60, trueLabel: "Ticket", falseLabel: "Safe" 
+  const [factors, setFactors] = useState({
+      income: 60000, debt: 5000, missedPayments: 0, // Loan
+      age: 45, bmi: 24, sleep: 7, // Medical
+      varA: 10, varB: 10, varC: 10 // Custom
   });
-  const [inputs, setInputs] = useState({ systolicBP: 140, creditScore: 700, customValue: 60 });
-  const [uncertainty, setUncertainty] = useState(3.0);
 
-  // Navigate to Result Page
+  const [customRules, setCustomRules] = useState({ threshold: 50, trueLabel: "Pass", falseLabel: "Fail" });
+
+  const calculateBaseline = () => {
+      let baseValue = 0;
+      let breakdown = "";
+
+      if (scenario === 'loan') {
+          // Weighted Logic: Income helps, Debt hurts, Missed Payments hurt a lot
+          baseValue = 600 + (factors.income / 1000) - (factors.debt / 100) - (factors.missedPayments * 50);
+          breakdown = `Income +${(factors.income/1000).toFixed(0)} | Debt -${(factors.debt/100).toFixed(0)}`;
+      } 
+      else if (scenario === 'medical') {
+          // Weighted Logic: Base BP 110 + Age factor + BMI factor - Sleep factor
+          baseValue = 110 + (factors.age / 2) + factors.bmi - (factors.sleep * 2);
+          breakdown = `Age +${factors.age/2} | BMI +${factors.bmi} | Sleep -${factors.sleep*2}`;
+      } 
+      else {
+          baseValue = factors.varA + factors.varB + factors.varC;
+          breakdown = `Sum of Inputs`;
+      }
+      return { baseValue: Math.round(baseValue), breakdown };
+  };
+
   const handleStart = () => {
+    const { baseValue, breakdown } = calculateBaseline();
     navigate('/result', { 
-      state: { scenario, customRules, inputs, uncertainty } 
+        state: { 
+            scenario, 
+            variance, // Passing the Percentage
+            baseValue, 
+            breakdown, 
+            customRules 
+        } 
     });
+  };
+
+  const renderInputs = () => {
+      if (scenario === 'loan') return (
+          <div className="grid-2" style={{gap: '10px'}}>
+              <div><label>Annual Income ($)</label><input type="number" value={factors.income} onChange={(e)=>setFactors({...factors, income: parseFloat(e.target.value)})} /></div>
+              <div><label>Total Debt ($)</label><input type="number" value={factors.debt} onChange={(e)=>setFactors({...factors, debt: parseFloat(e.target.value)})} /></div>
+              <div style={{gridColumn: 'span 2'}}><label>Missed Payments</label><input type="number" value={factors.missedPayments} onChange={(e)=>setFactors({...factors, missedPayments: parseFloat(e.target.value)})} /></div>
+          </div>
+      );
+      if (scenario === 'medical') return (
+        <div className="grid-2" style={{gap: '10px'}}>
+            <div><label>Age</label><input type="number" value={factors.age} onChange={(e)=>setFactors({...factors, age: parseFloat(e.target.value)})} /></div>
+            <div><label>BMI</label><input type="number" value={factors.bmi} onChange={(e)=>setFactors({...factors, bmi: parseFloat(e.target.value)})} /></div>
+            <div style={{gridColumn: 'span 2'}}><label>Sleep (Hours)</label><input type="number" value={factors.sleep} onChange={(e)=>setFactors({...factors, sleep: parseFloat(e.target.value)})} /></div>
+        </div>
+      );
+      return (
+          <div className="grid-2" style={{gap: '10px'}}>
+              <input type="number" placeholder="Var A" value={factors.varA} onChange={(e)=>setFactors({...factors, varA: parseFloat(e.target.value)})} />
+              <input type="number" placeholder="Var B" value={factors.varB} onChange={(e)=>setFactors({...factors, varB: parseFloat(e.target.value)})} />
+              <input type="number" placeholder="Var C" value={factors.varC} onChange={(e)=>setFactors({...factors, varC: parseFloat(e.target.value)})} />
+               <div style={{gridColumn: 'span 2', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px'}}>
+                  <input type="number" placeholder="Threshold" value={customRules.threshold} onChange={(e)=>setCustomRules({...customRules, threshold: parseFloat(e.target.value)})} />
+                  <input type="text" placeholder="Pass Label" value={customRules.trueLabel} onChange={(e)=>setCustomRules({...customRules, trueLabel: e.target.value})} />
+              </div>
+          </div>
+      );
+  };
+
+  // Dynamic label for the percentage slider
+  const getVarianceLabel = () => {
+      if(scenario === 'loan') return "Market Volatility (%)";
+      if(scenario === 'medical') return "Device Error / Fluctuation (%)";
+      return "Random Variance (%)";
   };
 
   return (
     <div className="container">
-      {/* CRITICAL FIX: 
-          We removed the <div className="background-container"> from here.
-          Now the Global Particles from App.js will be visible!
-      */}
-
       <motion.div 
-        initial={{ opacity: 0, y: 50 }} 
-        animate={{ opacity: 1, y: 0 }} 
-        transition={{ duration: 0.8 }}
+        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}
         className="glass-card"
-        style={{ maxWidth: "600px", margin: "0 auto" }}
       >
-        <p style={{ color: "#3b82f6", fontWeight: "bold", letterSpacing: "2px", fontSize: "0.8rem", textTransform: "uppercase" }}>
-          Interactive Simulator
-        </p>
-        <h1>Define the Uncertainty.</h1>
-        <p>Real-world decisions are never binary. Inject noise into the system and see where certainty collapses.</p>
-        
-        {/* SCENARIO SELECTOR */}
-        <label>Select Scenario</label>
-        <select value={scenario} onChange={(e) => setScenario(e.target.value)}>
-          <option value="medical">Medical Diagnosis (Borderline BP)</option>
-          <option value="loan">Loan Approval (Credit Cutoff)</option>
-          <option value="custom">Create Custom Scenario...</option>
-        </select>
+        <h1 className="title-gradient">Stochastic Risk Evaluator</h1>
+        <p className="subtitle">Multivariate Analysis & Probability Simulation</p>
 
-        {/* CUSTOM BUILDER */}
-        {scenario === "custom" && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} style={{ overflow: "hidden" }}>
-             <div className="grid-2" style={{ marginTop: "20px" }}>
-                <div><label>Title</label><input type="text" value={customRules.title} onChange={e => setCustomRules({...customRules, title: e.target.value})} /></div>
-                <div><label>Variable</label><input type="text" value={customRules.variableName} onChange={e => setCustomRules({...customRules, variableName: e.target.value})} /></div>
-             </div>
-             <div className="grid-2">
-                <div><label>Threshold</label><input type="number" value={customRules.threshold} onChange={e => setCustomRules({...customRules, threshold: parseInt(e.target.value)})} /></div>
-                <div><label>Fail Label</label><input type="text" value={customRules.trueLabel} onChange={e => setCustomRules({...customRules, trueLabel: e.target.value})} /></div>
-             </div>
-          </motion.div>
-        )}
+        <div className="input-group">
+            <label>Domain Context</label>
+            <select value={scenario} onChange={(e) => setScenario(e.target.value)}>
+                <option value="loan">🏦 Financial Credit Risk Model</option>
+                <option value="medical">❤️ Clinical Diagnosis Model</option>
+                <option value="custom">🛠️ Custom Logic Gate</option>
+            </select>
+        </div>
 
-        {/* SLIDERS */}
-        <div style={{ marginTop: "30px" }}>
-            <label>
-              {scenario === 'medical' ? `Systolic BP: ${inputs.systolicBP}` : 
-               scenario === 'loan' ? `Credit Score: ${inputs.creditScore}` : 
-               `${customRules.variableName}: ${inputs.customValue}`}
-            </label>
-            <input type="range" 
-               min={scenario === 'loan' ? 600 : (scenario === 'medical' ? 100 : customRules.threshold - 50)} 
-               max={scenario === 'loan' ? 850 : (scenario === 'medical' ? 200 : customRules.threshold + 50)}
-               value={scenario === 'medical' ? inputs.systolicBP : scenario === 'loan' ? inputs.creditScore : inputs.customValue} 
-               onChange={(e) => {
-                 const val = parseInt(e.target.value);
-                 if(scenario === 'medical') setInputs({...inputs, systolicBP: val});
-                 else if(scenario === 'loan') setInputs({...inputs, creditScore: val});
-                 else setInputs({...inputs, customValue: val});
-               }} 
+        <div className="input-group">
+            <label style={{color: '#22d3ee', marginBottom: '10px', display: 'block'}}>Determinants (Variables)</label>
+            {renderInputs()}
+        </div>
+
+        <div className="input-group">
+            <label>{getVarianceLabel()}</label>
+            <input 
+                type="range" min="0" max="20" step="1" 
+                value={variance} onChange={(e) => setVariance(e.target.value)} 
+                className="slider"
             />
-            
-            <label style={{ marginTop: "30px" }}>Uncertainty Level (Noise): {uncertainty}</label>
-            <input type="range" min="0" max="10" step="0.5" value={uncertainty} onChange={(e) => setUncertainty(e.target.value)} />
-            <p style={{ fontSize: "0.8rem", marginTop: "5px" }}>
-               {uncertainty === 0 ? "Deterministic (Perfect World)" : uncertainty > 7 ? "High Entropy (Chaos)" : "Realistic Noise"}
-            </p>
+            <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.8rem'}}>
+                <span>0% (Deterministic)</span>
+                <span style={{fontWeight:'bold', color: '#22d3ee'}}>±{variance}% Variance</span>
+                <span>20% (Chaotic)</span>
+            </div>
         </div>
 
         <button className="cta-button" onClick={handleStart}>
-           Run Simulation &rarr;
+            Run Monte Carlo Simulation &rarr;
         </button>
-
       </motion.div>
     </div>
   );
