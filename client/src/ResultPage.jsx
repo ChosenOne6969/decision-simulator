@@ -6,7 +6,7 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, annotationPlugin);
 
-// --- THE LOCAL SIMULATION ENGINE (FORMERLY BACKEND LOGIC) ---
+// --- THE LOCAL SIMULATION ENGINE ---
 const runLocalSimulation = (payload) => {
     const { uncertaintyLevel, inputs, customRules, scenarioType } = payload;
     
@@ -30,7 +30,7 @@ const runLocalSimulation = (payload) => {
         inputValue = inputs.customValue;
     }
 
-    // 2. Helper: Gaussian Random Generator (Box-Muller Transform)
+    // 2. Helper: Box-Muller Transform for Gaussian Noise
     const generateNormal = (mean, stdDev) => {
         let u = 0, v = 0;
         while (u === 0) u = Math.random();
@@ -44,28 +44,23 @@ const runLocalSimulation = (payload) => {
     const logs = [];
     let flipCount = 0;
 
-    // Determine Baseline
+    // Determine Baseline (The "Perfect World" Outcome)
     const isAboveThreshold = inputValue > threshold;
     const baselineDecision = scenarioType === "loan" 
-        ? (isAboveThreshold ? trueLabel : falseLabel) // Loan: Higher is better
-        : (isAboveThreshold ? trueLabel : falseLabel); // Medical: Higher is usually the "Trigger" (e.g. Risk)
-    
-    // Adjust logic: For Medical, >140 is BAD (High Risk). For Loan, >700 is GOOD (Approved).
-    // Let's standardize: "Pass" means meeting the condition.
+        ? (isAboveThreshold ? trueLabel : falseLabel) 
+        : (isAboveThreshold ? trueLabel : falseLabel); 
     
     for (let i = 0; i < iterations; i++) {
         // Inject Noise
-        const noise = generateNormal(0, parseFloat(uncertaintyLevel) * 2); // Multiplier for effect
+        const noise = generateNormal(0, parseFloat(uncertaintyLevel) * 20); // Scaled for visibility
         const simulatedValue = inputValue + noise;
         
         // Determine Outcome
-        let outcome;
-        if (scenarioType === "loan") {
-            outcome = simulatedValue >= threshold ? trueLabel : falseLabel;
-        } else {
-            // Medical & Custom (Assuming > Threshold is the 'Event')
-            outcome = simulatedValue >= threshold ? trueLabel : falseLabel;
-        }
+        let outcome = simulatedValue >= threshold ? trueLabel : falseLabel;
+        
+        // Handle Logic Inversion for Loan (Higher is better)
+        if (scenarioType === "loan" && simulatedValue < threshold) outcome = falseLabel;
+        if (scenarioType === "loan" && simulatedValue >= threshold) outcome = trueLabel;
 
         results.push(Math.round(simulatedValue));
 
@@ -73,7 +68,7 @@ const runLocalSimulation = (payload) => {
         const isFlip = outcome !== baselineDecision;
         if (isFlip) flipCount++;
 
-        // Log interesting events (Limit to 5)
+        // Log interesting events
         if (logs.length < 5 && (isFlip || Math.random() < 0.001)) {
             logs.push({
                 id: i,
@@ -91,8 +86,19 @@ const runLocalSimulation = (payload) => {
         distribution[val] = (distribution[val] || 0) + 1;
     });
 
-    // 5. Calculate Stability Score
+    // 5. Calculate Stability & Impact
     const stabilityScore = ((1 - (flipCount / iterations)) * 100).toFixed(2);
+    const dropPercentage = (100 - parseFloat(stabilityScore)).toFixed(2);
+    
+    // Impact Statement Generation
+    let impactStatement = "";
+    if (parseFloat(dropPercentage) === 0) {
+        impactStatement = "System is stable. Noise had zero impact on the outcome.";
+    } else if (parseFloat(dropPercentage) < 20) {
+        impactStatement = `At uncertainty level ${uncertaintyLevel}, the probability of '${baselineDecision}' dropped by ${dropPercentage}%.`;
+    } else {
+        impactStatement = `Critical Instability: Noise reduced confidence in '${baselineDecision}' by ${dropPercentage}%.`;
+    }
 
     // 6. Reflection Text
     let reflection = "";
@@ -110,7 +116,8 @@ const runLocalSimulation = (payload) => {
         },
         distribution,
         logs,
-        reflection
+        reflection,
+        impactStatement
     };
 };
 
@@ -127,7 +134,7 @@ const ResultPage = () => {
         // 1. ANTICIPATION DELAY (3 Seconds)
         await new Promise(resolve => setTimeout(resolve, 3000));
 
-        // 2. RUN LOCAL SIMULATION (No Axios/Server needed)
+        // 2. RUN LOCAL SIMULATION
         const payload = {
             uncertaintyLevel: state.uncertainty,
             scenarioType: state.scenario,
@@ -136,19 +143,25 @@ const ResultPage = () => {
         };
         
         const simulationResult = runLocalSimulation(payload);
-        
-        // 3. SHOW RESULTS
         setResult(simulationResult);
         setLoading(false);
     };
     runSim();
-  }, []); 
+  }, [state, navigate]); 
+
+  // --- DOWNLOAD HELPER ---
+  const downloadReport = () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(result, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", `decision_log_${Date.now()}.json`);
+      document.body.appendChild(downloadAnchorNode); // required for firefox
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+  };
 
   // --- RENDERING HELPERS ---
-  const getLabel = (key) => {
-    if (!state || state.scenario !== "custom") return key;
-    return key; 
-  };
+  const getLabel = (key) => key;
 
   const prepareChartData = () => {
     if (!result || !result.distribution) return { labels: [], datasets: [] };
@@ -206,11 +219,7 @@ const ResultPage = () => {
   // --- LOADING SCREEN ---
   if (loading || !result) return (
     <div className="container" style={{textAlign:"center", height: "80vh", justifyContent: "center"}}>
-        <h2 style={{
-            fontFamily: 'Montserrat', 
-            fontSize: "2rem",
-            animation: "pulse 1.5s infinite" 
-        }}>
+        <h2 style={{ fontFamily: 'Montserrat', fontSize: "2rem", animation: "pulse 1.5s infinite" }}>
             Analyzing Quantum Outcomes...
         </h2>
         <p style={{marginTop: "10px", opacity: 0.7}}>Injecting noise into the system</p>
@@ -220,13 +229,23 @@ const ResultPage = () => {
   // --- RESULT SCREEN ---
   return (
     <div className="container">
-      <button className="secondary-button" onClick={() => navigate('/')}>&larr; Start New Simulation</button>
+      
+      {/* BUTTON HEADER */}
+      <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px'}}>
+          <button className="secondary-button" onClick={() => navigate('/')}>
+              &larr; Start New Simulation
+          </button>
+          
+          <button className="secondary-button" onClick={downloadReport} style={{borderColor: '#22d3ee', color: '#22d3ee'}}>
+              💾 Download Mission Log
+          </button>
+      </div>
 
       <div className="glass-card">
         <div className="grid-2">
             <div>
                 <h1>Results</h1>
-                <p style={{fontStyle: 'italic'}}>"{result.reflection}"</p>
+                <p style={{fontStyle: 'italic', color: '#a5f3fc'}}>"{result.reflection}"</p>
             </div>
             <div style={{ textAlign: "right" }}>
                 <div className="stat-label">Stability Score</div>
@@ -236,6 +255,23 @@ const ResultPage = () => {
                 }}>
                     {result.stability}
                 </div>
+            </div>
+        </div>
+
+        {/* ENTROPY IMPACT REPORT */}
+        <div style={{ 
+            background: 'rgba(34, 211, 238, 0.1)', 
+            border: '1px solid #22d3ee', 
+            borderRadius: '12px', 
+            padding: '15px',
+            marginTop: '20px',
+            marginBottom: '20px',
+            textAlign: 'center',
+            color: '#cffafe'
+        }}>
+            <strong style={{textTransform:'uppercase', letterSpacing:'1px', fontSize:'0.8rem'}}>Entropy Impact Report</strong>
+            <div style={{ fontSize: '1.1rem', marginTop: '5px' }}>
+                {result.impactStatement}
             </div>
         </div>
 

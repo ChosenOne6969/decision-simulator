@@ -150,6 +150,18 @@ This project rejects the sterile "Corporate Dashboard" look in favor of a **Cine
 
 -----
 
+## 🧮 The Mathematics of Chaos
+
+Most random number generators (like `Math.random()`) create a **Uniform Distribution**—rolling a die where every number has an equal chance. Reality, however, follows a **Normal (Gaussian) Distribution** (The Bell Curve).
+
+To simulate this accurately in the browser, this project utilizes the **Box-Muller Transform**:
+
+$$Z_0 = \sqrt{-2 \ln U_1} \cos(2 \pi U_2)$$
+
+By transforming two uniform variables ($U_1, U_2$) into a pair of independent standard normal variables ($Z_0, Z_1$), we can inject statistically accurate "noise" into the decision thresholds. This allows us to quantify exactly how much entropy is required to flip a deterministic "Yes" into a probabilistic "No."
+
+---
+
 ## 👤 Author
 
 **Andrea Piu**
